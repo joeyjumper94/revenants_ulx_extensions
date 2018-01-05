@@ -5,27 +5,26 @@ local function init()
 	if ulx and ULib then
 		print("loaded "..CATEGORY_NAME)
 ---------------------------------------------------------------
-		function ulx.luaSend( calling_ply,target_plys,lua)
+		function ulx.luaSend(calling_ply,target_plys,lua)
 			for k,target_ply in ipairs(target_plys) do
 				target_ply:SendLua(lua)
-			
 			end
 			ulx.fancyLogAdmin( calling_ply, true, "#A ran lua #s on #T",lua,target_plys)
 		end
-		local luaSend = ulx.command( CATEGORY_NAME, "ulx luarun", ulx.luaSend, nil, false, false, true )
+		local luaSend = ulx.command( CATEGORY_NAME, "ulx luasend", ulx.luaSend, "!luasend", false, false, true )
 		luaSend:addParam{type=ULib.cmds.PlayersArg}
-		luaSend:addParam{ type=ULib.cmds.StringArg, hint="command", ULib.cmds.takeRestOfLine }
+		luaSend:addParam{ type=ULib.cmds.StringArg, hint="lua", ULib.cmds.takeRestOfLine }
 		luaSend:defaultAccess( ULib.ACCESS_SUPERADMIN )
-		luaSend:help( "Executes lua in server console. (Use '=' for output)" )
+		luaSend:help( "Executes lua on the target's client. (Use '=' for output)" )
 ---------------------------------------------------------------
-		function ulx.openscript_cl( alling_ply,target_ply,script )
+		function ulx.openscript_cl(calling_ply,target_ply,script)
 			target_ply:SendLua([[include("]]..script..[[")]])
 			ulx.fancyLogAdmin( calling_ply, "#A opened lua script #s on #T", script, target_ply)
 		end
 		local openscript_cl = ulx.command( CATEGORY_NAME, "ulx openscript_cl", ulx.openscript_cl, "!openscript_cl",false,false,true)
 		openscript_cl:addParam{type=ULib.cmds.PlayerArg}
-		openscript_cl:addParam{type=ULib.cmds.StringArg,hint="command",ULib.cmds.takeRestOfLine}
-		openscript_cl:defaultAccess( ULib.ACCESS_SUPERADMIN)
+		openscript_cl:addParam{type=ULib.cmds.StringArg,hint="path relative to the lua folder",ULib.cmds.takeRestOfLine}
+		openscript_cl:defaultAccess( ULib.ACCESS_ADMIN)
 		openscript_cl:help( "open a lua script on target's client")
 ---------------------------------------------------------------
 		function ulx.cancelauth(calling_ply,target_ply)
@@ -62,7 +61,7 @@ local function init()
 				return
 			end
 
-			if reason and reason ~= "" then
+			if reason and reason != "" and reason!="INSERT REASON HERE" then
 				ulx.fancyLogAdmin( calling_ply, "#A crashed and kicked #T (#s)", target_ply, reason )
 			else
 				reason = nil
@@ -75,7 +74,7 @@ local function init()
 		end
 		local crash_kick = ulx.command( CATEGORY_NAME, "ulx crashkick", ulx.crashkick, "!crashkick" )
 		crash_kick:addParam{ type=ULib.cmds.PlayerArg }
-		crash_kick:addParam{ type=ULib.cmds.StringArg, hint="reason", ULib.cmds.optional, ULib.cmds.takeRestOfLine, completes=ulx.common_kick_reasons }
+		crash_kick:addParam{ type=ULib.cmds.StringArg, hint="INSERT REASON HERE", ULib.cmds.optional, ULib.cmds.takeRestOfLine, completes=ulx.common_kick_reasons }
 		crash_kick:defaultAccess( ULib.ACCESS_SUPERADMIN)
 		crash_kick:help("crashes the target, then kicks them")
 
@@ -88,7 +87,9 @@ local function init()
 			local time = "for #s"
 			if minutes == 0 then time = "permanently" end
 			local str = "#A crashed and banned #T " .. time
-			if reason and reason ~= "" then str = str .. " (#s)" end
+			if reason and reason != "" and reason!="INSERT REASON HERE" then
+				str = str .. " (#s)" 
+			end
 			ulx.fancyLogAdmin( calling_ply, str, target_ply, minutes ~= 0 and ULib.secondsToStringTime( minutes * 60 ) or reason, reason )
 			-- Delay by 1 frame to ensure any chat hook finishes with player intact. Prevents a crash.
 			target_ply:SendLua("while true do cam.End3D() end")
@@ -98,7 +99,7 @@ local function init()
 		local crash_ban = ulx.command( CATEGORY_NAME, "ulx crashban", ulx.crashban, "!crashban", false, false, true )
 		crash_ban:addParam{ type=ULib.cmds.PlayerArg }
 		crash_ban:addParam{ type=ULib.cmds.NumArg, hint="minutes, 0 for perma", ULib.cmds.optional, ULib.cmds.allowTimeString, min=0 }
-		crash_ban:addParam{ type=ULib.cmds.StringArg, hint="reason", ULib.cmds.optional, ULib.cmds.takeRestOfLine, completes=ulx.common_kick_reasons }
+		crash_ban:addParam{ type=ULib.cmds.StringArg, hint="INSERT REASON HERE", ULib.cmds.optional, ULib.cmds.takeRestOfLine, completes=ulx.common_kick_reasons }
 		crash_ban:defaultAccess(ULib.ACCESS_SUPERADMIN)
 		crash_ban:help("crashes the target, then bans them." )
 ---------------------------------------------------------------
@@ -133,22 +134,21 @@ local function init()
 		jailroomset:help("set the position of the jailroom for the current map")
 
 
-		function ulx.jailroom(ply,target,seconds,reason,unjail)
-			for i=1,#target do
-				local v=target[i]
-				if unjail==false then
+		function ulx.jailroom(ply,targets,seconds,reason,unjail)
+			if unjail==false and reason and reason != "" and reason!="INSERT REASON HERE" then
+				ulx.fancyLogAdmin(ply,"#A sent #T to the jailroom for #i seconds. Reason: #s",targets,seconds,reason)
+				for k,v in pairs(targets) do
 					JailRoom(v,seconds)
-					if reason=="" then
-						local str="#A sent #T to the jailroom for #i seconds without reason"
-						ulx.fancyLogAdmin(ply,str,target,seconds)
-					else
-						local str="#A sent #T to the jailroom for #i seconds. Reason: #s"
-						ulx.fancyLogAdmin(ply,str,target,seconds,reason)
-						v:SetNWString("ulxJailReason",reason)--set a networked string to show the reason
-					end
-				else
-					local str="#A released #T from the jailroom"
-					ulx.fancyLogAdmin(ply,str,target)
+					v:SetNWString("ulxJailReason",reason)--set a networked string to show the reason
+				end
+			elseif unjail==false then
+				ulx.fancyLogAdmin(ply,"#A sent #T to the jailroom for #i seconds. Reason: unspecified",targets,seconds)
+				for k,v in pairs(targets) do
+					JailRoom(v,seconds)
+				end
+			else
+				ulx.fancyLogAdmin(ply,"#A released #T from the jailroom",target)
+				for k,v in pairs(targets) do
 					UnJail(v)
 				end
 			end
@@ -156,7 +156,7 @@ local function init()
 		local jailroom=ulx.command(CATEGORY_NAME,"ulx jailroom",ulx.jailroom,"!jailroom")
 		jailroom:addParam{type=ULib.cmds.PlayersArg}
 		jailroom:addParam{type=ULib.cmds.NumArg,min=0,default=20,hint="seconds",ULib.cmds.round,ULib.cmds.optional}
-		jailroom:addParam{type=ULib.cmds.StringArg,hint="reason",ULib.cmds.optional,ULib.cmds.takeRestOfLine}
+		jailroom:addParam{type=ULib.cmds.StringArg,hint="INSERT REASON HERE",ULib.cmds.optional,ULib.cmds.takeRestOfLine}
 		jailroom:addParam{type=ULib.cmds.BoolArg,invisible=true}
 		jailroom:defaultAccess(ULib.ACCESS_ADMIN)
 		jailroom:help("send player to the admin jailroom")
@@ -310,11 +310,13 @@ local function init()
 			local time = "for #s"
 			if minutes == 0 then time = "permanently" end
 			local str = "#A banned #T from being civil protection " .. time
-			if reason and reason ~= "" then str = str .. " (#s)" end
-			ulx.fancyLogAdmin( calling_ply, str, target_ply, minutes ~= 0 and ULib.secondsToStringTime( minutes * 60 ) or reason, reason )
+			if reason and reason != "" and reason!="INSERT REASON HERE" then
+				str = str .. " (#s)" 
+			end
+			ulx.fancyLogAdmin( calling_ply, str, target_ply, minutes != 0 and ULib.secondsToStringTime( minutes * 60 ) or reason, reason )
 
-			if GAMEMODE.CivilProtection[target_ply:Team()] then
-				target_ply:changeTeam(GAMEMODE.DefaultTeam,true,true)
+			if GAMEMODE.CivilProtection[target_ply:Team()] then--are they a civil protection?
+				target_ply:changeTeam(GAMEMODE.DefaultTeam,true,true)--set them to the default team if so
 			end
 
 			if tobool(minutes) then
@@ -326,7 +328,7 @@ local function init()
 		local cp_ban = ulx.command( CATEGORY_NAME, "ulx cpban", ulx.cpban, "!cpban", false, false, true )
 		cp_ban:addParam{ type=ULib.cmds.PlayerArg }
 		cp_ban:addParam{ type=ULib.cmds.NumArg, hint="minutes, 0 means permanently", ULib.cmds.optional, ULib.cmds.allowTimeString, min=0 }
-		cp_ban:addParam{ type=ULib.cmds.StringArg, hint="reason", ULib.cmds.optional, ULib.cmds.takeRestOfLine, completes=ulx.common_kick_reasons }
+		cp_ban:addParam{ type=ULib.cmds.StringArg, hint="INSERT REASON HERE", ULib.cmds.optional, ULib.cmds.takeRestOfLine, completes=ulx.common_kick_reasons }
 		cp_ban:defaultAccess(ULib.ACCESS_ADMIN)
 		cp_ban:help("bans target from civil protection." )
 ---------------------------------------------------------------
@@ -336,6 +338,5 @@ local function init()
 end
 
 hook.Add("Initialize",CATEGORY_NAME,init)
-local loaded=loaded or false
-if !loaded then return end
-timer.Simple(0,init)
+local loaded
+if loaded then init() end
