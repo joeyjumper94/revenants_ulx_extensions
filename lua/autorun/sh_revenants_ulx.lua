@@ -1,5 +1,6 @@
 AddCSLuaFile()
 local CATEGORY_NAME="Revenant's extensions"
+local loaded=loaded
 local function init()
 	loaded=true
 	if ulx and ULib then
