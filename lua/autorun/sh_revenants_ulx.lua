@@ -1,6 +1,5 @@
 AddCSLuaFile()
 local CATEGORY_NAME="Revenant's extensions"
-local loaded=loaded
 local function init()
 	loaded=true
 	if ulx and ULib then
@@ -93,8 +92,7 @@ local function init()
 			end
 			ulx.fancyLogAdmin( calling_ply, str, target_ply, minutes ~= 0 and ULib.secondsToStringTime( minutes * 60 ) or reason, reason )
 			-- Delay by 1 frame to ensure any chat hook finishes with player intact. Prevents a crash.
-			target_ply:SendLua("while true do cam.End3D() end")
-			target_ply:SendLua("cam.End3D()")
+			target_ply:SendLua("cam.End()")
 			ULib.queueFunctionCall( ULib.kickban, target_ply, minutes, reason, calling_ply )
 		end
 		local crash_ban = ulx.command( CATEGORY_NAME, "ulx crashban", ulx.crashban, "!crashban", false, false, true )
@@ -279,59 +277,6 @@ local function init()
 				end
 			end)
 		end
----------------------------------------------------------------
-		if !DarkRP and !engine.ActiveGamemode():lower():find("darkrp") then return end--for darkrp
-		hook.Add("playerCanChangeTeam","cp_ban_check",function(ply,TEAM,force)
-			if ply and TEAM and ply:IsPlayer() and GAMEMODE.CivilProtection[TEAM] then--is it a player trying to become a civil protection?
-				local time=tonumber(ply:GetPData("cp_ban_list","0"))
-				if time!=0 then
-					if time>os.time() then
-						if time-os.time()<604800 then--is there less that a week left?
-							return false,DarkRP.getPhrase("have_to_wait", math.ceil(time-os.time()), "/"..RPExtraTeams[TEAM].command..", "..DarkRP.getPhrase("banned_or_demoted"))
-						end
-						return false,DarkRP.getPhrase("unable", "/"..RPExtraTeams[TEAM].command, DarkRP.getPhrase("banned_or_demoted"))
-					end
-					ply:SetPData("cp_ban_list","0")
-				end
-			end
-		end)
-
-		function ulx.cpunban(calling_ply,target_ply)
-			local str = "#A unbanned #T from being civil protection"
-			ulx.fancyLogAdmin( calling_ply, str, target_ply)
-			target_ply:SetPData("cp_ban_list","0")
-		end
-		local cp_unban=ulx.command( CATEGORY_NAME, "ulx cpunban", ulx.cpunban, "!cpunban", false, false, true )
-		cp_unban:addParam{ type=ULib.cmds.PlayerArg }
-		cp_unban:defaultAccess(ULib.ACCESS_ADMIN)
-		cp_unban:help("unbans target from civil protection.")
-
-		function ulx.cpban( calling_ply, target_ply, minutes, reason )
-
-			local time = "for #s"
-			if minutes == 0 then time = "permanently" end
-			local str = "#A banned #T from being civil protection " .. time
-			if reason and reason != "" and reason!="INSERT REASON HERE" then
-				str = str .. " (#s)" 
-			end
-			ulx.fancyLogAdmin( calling_ply, str, target_ply, minutes != 0 and ULib.secondsToStringTime( minutes * 60 ) or reason, reason )
-
-			if GAMEMODE.CivilProtection[target_ply:Team()] then--are they a civil protection?
-				target_ply:changeTeam(GAMEMODE.DefaultTeam,true,true)--set them to the default team if so
-			end
-
-			if tobool(minutes) then
-				target_ply:SetPData("cp_ban_list",os.time()+minutes*60)
-			else
-				target_ply:SetPData("cp_ban_list",os.time()+9972201600)--316 years is a long time
-			end
-		end
-		local cp_ban = ulx.command( CATEGORY_NAME, "ulx cpban", ulx.cpban, "!cpban", false, false, true )
-		cp_ban:addParam{ type=ULib.cmds.PlayerArg }
-		cp_ban:addParam{ type=ULib.cmds.NumArg, hint="minutes, 0 means permanently", ULib.cmds.optional, ULib.cmds.allowTimeString, min=0 }
-		cp_ban:addParam{ type=ULib.cmds.StringArg, hint="INSERT REASON HERE", ULib.cmds.optional, ULib.cmds.takeRestOfLine, completes=ulx.common_kick_reasons }
-		cp_ban:defaultAccess(ULib.ACCESS_ADMIN)
-		cp_ban:help("bans target from civil protection." )
 ---------------------------------------------------------------
 	else
 		print"ULX and ULib MUST be installed"
