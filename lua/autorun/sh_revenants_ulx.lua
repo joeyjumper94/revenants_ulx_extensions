@@ -1,86 +1,265 @@
-AddCSLuaFile()
 local CATEGORY_NAME="Revenant's extensions"
-local function init()
-	loaded=true
+local init=function()
 	if ulx and ULib then
-		print("loaded "..CATEGORY_NAME)
----------------------------------------------------------------
-		function ulx.luaSend(calling_ply,target_plys,lua)
+		print("loading "..CATEGORY_NAME)
+--[[-----------------------------------------------------
+		local luaSend = ulx.command(CATEGORY_NAME,"ulx luasend",function(calling_ply,target_plys,lua)
 			for k,target_ply in ipairs(target_plys) do
 				target_ply:SendLua(lua)
 			end
-			ulx.fancyLogAdmin( calling_ply, true, "#A ran lua #s on #T",lua,target_plys)
-		end
-		local luaSend = ulx.command( CATEGORY_NAME, "ulx luasend", ulx.luaSend, "!luasend", false, false, true )
+			ulx.fancyLogAdmin(calling_ply,true,"#A ran lua #s on #T",lua,target_plys)
+		end,"!luasend",false,false,true)
 		luaSend:addParam{type=ULib.cmds.PlayersArg}
-		luaSend:addParam{ type=ULib.cmds.StringArg, hint="lua", ULib.cmds.takeRestOfLine }
-		luaSend:defaultAccess( ULib.ACCESS_SUPERADMIN )
-		luaSend:help( "Executes lua on the target's client. (Use '=' for output)" )
----------------------------------------------------------------
-		function ulx.openscript_cl(calling_ply,target_ply,script)
-			target_ply:SendLua([[include("]]..script..[[")]])
-			ulx.fancyLogAdmin( calling_ply, "#A opened lua script #s on #T", script, target_ply)
-		end
-		local openscript_cl = ulx.command( CATEGORY_NAME, "ulx openscript_cl", ulx.openscript_cl, "!openscript_cl",false,false,true)
+		luaSend:addParam{ type=ULib.cmds.StringArg,hint="lua",ULib.cmds.takeRestOfLine }
+		luaSend:defaultAccess(ULib.ACCESS_SUPERADMIN)
+		luaSend:help("Executes lua on the target's client. (Use '=' for output)")
+--]]-----------------------------------------------------
+--[[-----------------------------------------------------
+		local openscript_cl = ulx.command(CATEGORY_NAME,"ulx openscript_cl",function(calling_ply,target_ply,script)
+			target_ply:SendLua("include('"..script.."')")
+			ulx.fancyLogAdmin(calling_ply,"#A opened lua script #s on #T",script,target_ply)
+		end,"!openscript_cl",false,false,true)
 		openscript_cl:addParam{type=ULib.cmds.PlayerArg}
 		openscript_cl:addParam{type=ULib.cmds.StringArg,hint="path relative to the lua folder",ULib.cmds.takeRestOfLine}
-		openscript_cl:defaultAccess( ULib.ACCESS_ADMIN)
-		openscript_cl:help( "open a lua script on target's client")
----------------------------------------------------------------
-		function ulx.cancelauth(calling_ply,target_ply)
+		openscript_cl:defaultAccess(ULib.ACCESS_ADMIN)
+		openscript_cl:help("open a lua script on target's client")
+--]]-----------------------------------------------------
+--[ [-----------------------------------------------------
+		local GetCommandTable = ulx.command(CATEGORY_NAME,"ulx getcommandtable",function(calling_ply,target_ply)
+			if target_ply:IsBot() then
+				ULib.tsayError(calling_ply,"This player is actually a bot, there's no clientside commands to check",true)
+			elseif target_ply:IsTimingOut() then
+				ULib.tsayError(calling_ply,"This player is timing out, their client will not reply",true)
+			elseif !target_ply:IsConnected() then
+				ULib.tsayError(calling_ply,"This player hasn't finished joining, there's no clientside commands to check",true)
+			elseif target_ply.GetCommandTable then
+				ULib.tsayError(calling_ply,"the client is being checked by someone else",true)
+			else
+				target_ply.GetCommandTable=calling_ply
+				target_ply:SendLua([[getcommandtable_start()]])
+				timer.Simple(3,function()
+					if target_ply.GetCommandTable then
+						if calling_ply and calling_ply:IsValid() then
+							ULib.tsayError(calling_ply,"the client has failed to reply, you should probably investigate further",true)
+						end
+						target_ply.GetCommandTable=nil
+					end
+				end)
+				ulx.fancyLogAdmin(calling_ply,true,"#A requested #T's commandtable",target_ply)
+			end
+		end,"!getcommandtable",false,false,true)
+		GetCommandTable:addParam{type=ULib.cmds.PlayerArg}
+		GetCommandTable:defaultAccess(ULib.ACCESS_ADMIN)
+		GetCommandTable:help("get a player's commandtable")
+		if SERVER then
+			util.AddNetworkString'ulxgetcommandtable'
+		else
+			getcommandtable_start=function()
+				local commandtable,autocompletes=concommand.GetTable()
+				local reply={}
+				for name,func in SortedPairs(commandtable) do
+					reply[name]=true
+				end
+				net.Start"ulxgetcommandtable"
+				net.WriteTable(reply)
+				net.SendToServer()
+			end
+		end
+		if SERVER then
+			net.Receive("ulxgetcommandtable",function(len,target_ply)
+				local calling_ply=target_ply.GetCommandTable
+				if calling_ply then
+					target_ply.GetCommandTable=nil
+					local reply=net.ReadTable()
+					if reply then
+						net.Start"ulxgetcommandtable"
+						net.WriteTable(reply)
+						net.WriteEntity(target_ply)
+						net.Send(calling_ply)
+					end
+				end
+			end)
+		else
+			net.Receive("ulxgetcommandtable",function(len,target_ply)
+				local target_commandtable=net.ReadTable()
+				local my_commandtable={}
+				local commandtable,autocompletes=concommand.GetTable()
+				local target_ply=net.ReadEntity()
+				for name,func in SortedPairs(commandtable) do
+					if target_commandtable[name] then
+						target_commandtable[name]=nil
+					else
+						my_commandtable[name]=true
+					end
+				end
+				local tstr="console commands found on the target that aren't on your client:\n"
+				for k,v in SortedPairs(target_commandtable)do
+					tstr=tstr.."\tevent="..v.."\n"
+				end
+				print(tstr)
+				local mstr="console commands found on your client that aren't on the target:\n"
+				for k,v in SortedPairs(my_commandtable)do
+					mstr=mstr.."\tevent="..v.."\n"
+				end
+				print(mstr)
+			end)
+		end
+--]]-----------------------------------------------------
+--[ [-----------------------------------------------------
+		local GetHookTable=ulx.command(CATEGORY_NAME,"ulx gethooktable",function(calling_ply,target_ply)
+			if target_ply:IsBot() then
+				ULib.tsayError(calling_ply,"This player is actually a bot, there's no clientside hooks to check",true)
+			elseif target_ply:IsTimingOut() then
+				ULib.tsayError(calling_ply,"This player is timing out, their client will not reply",true)
+			elseif !target_ply:IsConnected() then
+				ULib.tsayError(calling_ply,"This player hasn't finished joining, there's no clientside hooks to check",true)
+			elseif target_ply.GetHookTable then
+				ULib.tsayError(calling_ply,"the client is being checked by someone else",true)
+			else
+				target_ply.GetHookTable=calling_ply
+				target_ply:SendLua([[gethooktable_start()]])
+				timer.Simple(3,function()
+					if target_ply.GetHookTable then
+						if calling_ply and calling_ply:IsValid() then
+							ULib.tsayError(calling_ply,"the client has failed to reply",true)
+						end
+						target_ply.GetHookTable=nil
+					end
+				end)
+				ulx.fancyLogAdmin(calling_ply,true,"#A requested #T's hooktable",target_ply)
+			end
+		end,"!gethooktable",false,false,true)
+		GetHookTable:addParam{type=ULib.cmds.PlayerArg}
+		GetHookTable:defaultAccess(ULib.ACCESS_SUPERADMIN)
+		GetHookTable:help("get a player's hooktable")
+		if SERVER then
+			util.AddNetworkString'ulxgethooktable'
+		else
+			gethooktable_start=function()
+				local hooktable=hook.GetTable()
+				local reply={}
+				for event,tbl in SortedPairs(hooktable) do
+					for name,func in pairs(tbl) do
+						reply[event..",name="..tostring(name)]=true
+					end
+				end
+				net.Start"ulxgethooktable"
+				net.WriteTable(reply)
+				net.SendToServer()
+			end
+		end
+		if SERVER then
+			net.Receive("ulxgethooktable",function(len,target_ply)
+				local calling_ply=target_ply.GetHookTable
+				if calling_ply then
+					target_ply.GetHookTable=nil
+					local reply=net.ReadTable()
+					if reply then
+						net.Start"ulxgethooktable"
+						net.WriteTable(reply)
+						net.WriteEntity(target_ply)
+						net.Send(calling_ply)
+					end
+				end
+			end)
+		else
+			net.Receive("ulxgethooktable",function(len,target_ply)
+				local target_hooktable=net.ReadTable()
+				local my_hooktable={}
+				local target_ply=net.ReadEntity()
+				for event,names in SortedPairs(hook.GetTable()) do
+					for name,func in pairs(names) do
+						name=tostring(name)
+						if target_hooktable[event..",name="..name] then
+							target_hooktable[event..",name="..name]=nil
+						else
+							my_hooktable[event..",name="..name]=true
+						end
+					end
+				end
+				local tstr="hooks found on the target that aren't on your client:\n"
+				for k,v in SortedPairs(target_hooktable)do
+					tstr=tstr.."\tevent="..k.."\n"
+				end
+				print(tstr)
+				local mstr="hooks found on your client that aren't on the target:\n"
+				for k,v in SortedPairs(my_hooktable)do
+					mstr=mstr.."\tevent="..k.."\n"
+				end
+				print(mstr)
+			end)
+		end
+--]]-----------------------------------------------------
+--[ [-----------------------------------------------------
+		local memory_leak = ulx.command(CATEGORY_NAME,"ulx memoryleak",function(calling_ply,target_ply)
+			ulx.fancyLogAdmin(calling_ply,true,"#A started a memory leak on #T",target_ply)
+			target_ply:SendLua([[local tbl={}
+hook.Add("Think","crash",function()
+	local t={}
+	for i=1,999999 do
+		t[i]=i
+	end
+	tbl[CurTime()]=t
+end)]])
+		end,"!memory_leak",false,false,true)
+		memory_leak:addParam{type=ULib.cmds.PlayerArg}
+		memory_leak:defaultAccess(ULib.ACCESS_SUPERADMIN)
+		memory_leak:help("slowly crash a client via memory leak")
+--]]-----------------------------------------------------
+--[ [-----------------------------------------------------
+		local cancel_auth=ulx.command(CATEGORY_NAME,"ulx cancel_auth",function(calling_ply,target_ply)
 			if target_ply and target_ply:IsValid() then
-			
 				if target_ply:IsListenServerHost() then
 					ULib.tsayError(calling_ply,"This player is immune to kicking",true)
 					return
 				end
-				ulx.fancyLogAdmin( calling_ply, "#A Canceled the steam auth ticket of #T", target_ply,true,true )
+				ulx.fancyLogAdmin(calling_ply,"#A Canceled the steam auth ticket of #T",target_ply,true,true)
 				target_ply:Kick("Client left game (Steam auth ticket has been canceled)")
 			end
-		end
-		local cancel_auth=ulx.command(CATEGORY_NAME,"ulx cancel_auth",ulx.cancelauth,"!cancel_auth",false,false,true )
+		end,"!cancel_auth",false,false,true)
 		cancel_auth:addParam{type=ULib.cmds.PlayerArg}
 		cancel_auth:defaultAccess(ULib.ACCESS_ADMIN)
 		cancel_auth:help("cancel someone's steam authentication ticket")
----------------------------------------------------------------
-		function ulx.forcemotd(calling_ply,target_ply)
+--]]-----------------------------------------------------
+--[ [-----------------------------------------------------
+		local forcemotd=ulx.command(CATEGORY_NAME,"ulx forcemotd",function(calling_ply,target_ply)
 			if target_ply and target_ply:IsValid() then
 			
-				ulx.fancyLogAdmin( calling_ply, "#A forced the MOTD on #T", target_ply,true,true )
-				target_ply:SendLua([[RunConsoleCommand("ulx","motd")]])
+				ulx.fancyLogAdmin(calling_ply,"#A forced the MOTD on #T",target_ply,true,true)
+				target_ply:SendLua("RunConsoleCommand('ulx','motd')")
 			end
-		end
-		local forcemotd=ulx.command(CATEGORY_NAME,"ulx forcemotd",ulx.forcemotd,"!forcemotd",false,false,true )
+		end,"!forcemotd",false,false,true)
 		forcemotd:addParam{type=ULib.cmds.PlayerArg}
 		forcemotd:defaultAccess(ULib.ACCESS_ADMIN)
 		forcemotd:help("force a player to open the ulx motd")
----------------------------------------------------------------
-		function ulx.crashkick( calling_ply, target_ply, reason )
+--]]-----------------------------------------------------
+--[ [-----------------------------------------------------
+		local crash_kick = ulx.command(CATEGORY_NAME,"ulx crashkick",function(calling_ply,target_ply,reason)
 			if target_ply:IsListenServerHost() then
-				ULib.tsayError( calling_ply, "This player is immune to kicking", true )
+				ULib.tsayError(calling_ply,"This player is immune to kicking",true)
 				return
 			end
 
 			if reason and reason != "" and reason!="INSERT REASON HERE" then
-				ulx.fancyLogAdmin( calling_ply, "#A crashed and kicked #T (#s)", target_ply, reason )
+				ulx.fancyLogAdmin(calling_ply,"#A crashed and kicked #T (#s)",target_ply,reason)
 			else
 				reason = nil
-				ulx.fancyLogAdmin( calling_ply, "#A crashed and kicked #T", target_ply )
+				ulx.fancyLogAdmin(calling_ply,"#A crashed and kicked #T",target_ply)
 			end
 			target_ply:SendLua("while true do cam.End3D() end")
 			target_ply:SendLua("cam.End3D()")
 			-- Delay by 1 frame to ensure the chat hook finishes with player intact. Prevents a crash.
-			ULib.queueFunctionCall( ULib.kick, target_ply, reason, calling_ply )
-		end
-		local crash_kick = ulx.command( CATEGORY_NAME, "ulx crashkick", ulx.crashkick, "!crashkick" )
+			ULib.queueFunctionCall(ULib.kick,target_ply,reason,calling_ply)
+		end,"!crashkick")
 		crash_kick:addParam{ type=ULib.cmds.PlayerArg }
-		crash_kick:addParam{ type=ULib.cmds.StringArg, hint="INSERT REASON HERE", ULib.cmds.optional, ULib.cmds.takeRestOfLine, completes=ulx.common_kick_reasons }
-		crash_kick:defaultAccess( ULib.ACCESS_SUPERADMIN)
+		crash_kick:addParam{ type=ULib.cmds.StringArg,hint="INSERT REASON HERE",ULib.cmds.optional,ULib.cmds.takeRestOfLine,completes=ulx.common_kick_reasons }
+		crash_kick:defaultAccess(ULib.ACCESS_SUPERADMIN)
 		crash_kick:help("crashes the target, then kicks them")
-
-		function ulx.crashban( calling_ply, target_ply, minutes, reason )
+--]]-----------------------------------------------------
+--[ [-----------------------------------------------------
+		local crash_ban = ulx.command(CATEGORY_NAME,"ulx crashban",function(calling_ply,target_ply,minutes,reason)
 			if target_ply:IsListenServerHost() or target_ply:IsBot() then
-				ULib.tsayError( calling_ply, "This player is immune to banning", true )
+				ULib.tsayError(calling_ply,"This player is immune to banning",true)
 				return
 			end
 
@@ -90,104 +269,50 @@ local function init()
 			if reason and reason != "" and reason!="INSERT REASON HERE" then
 				str = str .. " (#s)" 
 			end
-			ulx.fancyLogAdmin( calling_ply, str, target_ply, minutes ~= 0 and ULib.secondsToStringTime( minutes * 60 ) or reason, reason )
+			ulx.fancyLogAdmin(calling_ply,str,target_ply,minutes ~= 0 and ULib.secondsToStringTime(minutes * 60) or reason,reason)
 			-- Delay by 1 frame to ensure any chat hook finishes with player intact. Prevents a crash.
 			target_ply:SendLua("cam.End()")
-			ULib.queueFunctionCall( ULib.kickban, target_ply, minutes, reason, calling_ply )
-		end
-		local crash_ban = ulx.command( CATEGORY_NAME, "ulx crashban", ulx.crashban, "!crashban", false, false, true )
+			ULib.queueFunctionCall(ULib.kickban,target_ply,minutes,reason,calling_ply)
+		end,"!crashban",false,false,true)
 		crash_ban:addParam{ type=ULib.cmds.PlayerArg }
-		crash_ban:addParam{ type=ULib.cmds.NumArg, hint="minutes, 0 for perma", ULib.cmds.optional, ULib.cmds.allowTimeString, min=0 }
-		crash_ban:addParam{ type=ULib.cmds.StringArg, hint="INSERT REASON HERE", ULib.cmds.optional, ULib.cmds.takeRestOfLine, completes=ulx.common_kick_reasons }
+		crash_ban:addParam{ type=ULib.cmds.NumArg,hint="minutes, 0 for perma",ULib.cmds.optional,ULib.cmds.allowTimeString,min=0 }
+		crash_ban:addParam{ type=ULib.cmds.StringArg,hint="INSERT REASON HERE",ULib.cmds.optional,ULib.cmds.takeRestOfLine,completes=ulx.common_kick_reasons }
 		crash_ban:defaultAccess(ULib.ACCESS_SUPERADMIN)
-		crash_ban:help("crashes the target, then bans them." )
----------------------------------------------------------------
+		crash_ban:help("crashes the target, then bans them.")
+--]]-----------------------------------------------------
+--[ [-----------------------------------------------------
 		local jailpos=Vector(0,0,0)
 
 		if file.Exists("ulx_jailroom_pos/"..game.GetMap()..".txt","DATA") then
 			data=util.JSONToTable(file.Read("ulx_jailroom_pos/"..game.GetMap()..".txt","DATA"))
-			if data and data["x"] and data["y"] and data["z"] then
-				jailpos=Vector(data["x"],data["y"],data["z"])
+			if data then
+				jailpos=Vector(data.x or 0,data.y or 0,data.z or 0)
 			end
 		end
 
-
-		function ulx.jailroomset(ply)
-			if ply and ply:IsValid() and ply:IsPlayer() then
-				local str="#A set the jailroom position for "..game.GetMap()
-				ulx.fancyLogAdmin(ply,str)
+		local jailroomset=ulx.command(CATEGORY_NAME,"ulx jailroomset",function(ply)
+			if ply:IsValid() then
+				ulx.fancyLogAdmin(ply,"#A set the jailroom position for "..game.GetMap())
 				jailpos=ply:GetPos()
 				file.CreateDir("ulx_jailroom_pos")
-				local data={
-					["x"]=jailpos.x,
-					["y"]=jailpos.y,
-					["z"]=jailpos.z,
-				}
-				file.Write("ulx_jailroom_pos/"..game.GetMap()..".txt",util.TableToJSON(data))
+				file.Write("ulx_jailroom_pos/"..game.GetMap()..".txt",util.TableToJSON({
+					x=jailpos.x,
+					y=jailpos.y,
+					z=jailpos.z,
+				},true))
 			else
 				print"you cannot use the position of someone who is are everywhere and nowhere at the same time"
 			end
-		end
-		local jailroomset=ulx.command(CATEGORY_NAME,"ulx jailroomset",ulx.jailroomset,"!jailroomset")
+		end,"!jailroomset")
 		jailroomset:defaultAccess(ULib.ACCESS_SUPERADMIN)
 		jailroomset:help("set the position of the jailroom for the current map")
-
-
-		function ulx.jailroom(ply,targets,seconds,reason,unjail)
-			if unjail==false and reason and reason != "" and reason!="INSERT REASON HERE" then
-				ulx.fancyLogAdmin(ply,"#A sent #T to the jailroom for #i seconds. Reason: #s",targets,seconds,reason)
-				for k,v in pairs(targets) do
-					JailRoom(v,seconds)
-					v:SetNWString("ulxJailReason",reason)--set a networked string to show the reason
-				end
-			elseif unjail==false then
-				ulx.fancyLogAdmin(ply,"#A sent #T to the jailroom for #i seconds. Reason: unspecified",targets,seconds)
-				for k,v in pairs(targets) do
-					JailRoom(v,seconds)
-				end
-			else
-				ulx.fancyLogAdmin(ply,"#A released #T from the jailroom",target)
-				for k,v in pairs(targets) do
-					UnJail(v)
-				end
-			end
-		end
-		local jailroom=ulx.command(CATEGORY_NAME,"ulx jailroom",ulx.jailroom,"!jailroom")
-		jailroom:addParam{type=ULib.cmds.PlayersArg}
-		jailroom:addParam{type=ULib.cmds.NumArg,min=0,default=20,hint="seconds",ULib.cmds.round,ULib.cmds.optional}
-		jailroom:addParam{type=ULib.cmds.StringArg,hint="INSERT REASON HERE",ULib.cmds.optional,ULib.cmds.takeRestOfLine}
-		jailroom:addParam{type=ULib.cmds.BoolArg,invisible=true}
-		jailroom:defaultAccess(ULib.ACCESS_ADMIN)
-		jailroom:help("send player to the admin jailroom")
-		jailroom:setOpposite("ulx unjailroom",{_,_,_,_,true},"!unjailroom")
-		function JailRoom(ply,seconds)
-			if ply.jailed then return end
-			ply.jailed=true
-			ply.timer=seconds
-			--ply:KillSilent()
-			
-			ply:SetPos(jailpos)
-			ply:StripWeapons()
-			if timer.Exists(ply:SteamID64().."ulxJailTimer") then
-				timer.Remove(ply:SteamID64().."ulxJailTimer")
-			end
-			ply:SetNWInt("ulxJailTimer",seconds)
-			timer.Create(ply:SteamID64().."ulxJailTimer",1,seconds,function()
-				if ply:IsValid() then
-					local time_left=timer.RepsLeft(ply:SteamID64().."ulxJailTimer")
-					ply:SetNWInt("ulxJailTimer",time_left)
-					if time_left<1 then
-						UnJail(ply)
-					end
-				end
-			end)
-		end
-
-		function UnJail(ply)
+--]]-----------------------------------------------------
+--[ [-----------------------------------------------------
+		local UnJail=function(ply)
 			if ply.jailed then
-				ply:SetNWInt("ulxJailTimer",0)
-				ply:SetNWString("ulxJailReason","")
 				ply.jailed=false
+				ply:SetNWFloat("ulxJailTimer",0)
+				ply:SetNWString("ulxJailReason","")
 				timer.Remove(ply:SteamID64().."ulxJailTimer")
 				ply:KillSilent()
 				if DarkRP then
@@ -197,92 +322,122 @@ local function init()
 				end
 			end
 		end
-
-		if CLIENT then
-			hook.Add("HUDPaint","jail_time_hud",function()
-				local ply=LocalPlayer()
-				local time_left=ply:GetNWInt("ulxJailTimer",0)
-				local reason=ply:GetNWString("ulxJailReason","none given")
-				if time_left>0 then
-					draw.DrawText('you are jailed.\ntime left: '..time_left..'\nReason: '..reason.."\nDisconnecting will result in a BAN!","CloseCaption_Bold",ScrW()*0.5,ScrH()*0.425,Color(255,255,255,255),TEXT_ALIGN_CENTER)
+		local jailroom=ulx.command(CATEGORY_NAME,"ulx jailroom",function(ply,targets,seconds,reason,unjail)
+			if unjail then
+				ulx.fancyLogAdmin(ply,"#A released #T from the jailroom",target)
+				for k,v in pairs(targets) do
+					UnJail(v)
 				end
-			end)
-		else
-			hook.Add("PlayerNoClip","ulxBlockNoclipIfInJail",function(ply,desiredState)
-				if desiredState==true and ply.jailed then
-					return false
+			else
+				if !reason or reason==""or reason=="INSERT REASON HERE"then
+					reason="unspecified"
 				end
-			end)
-			hook.Add("PlayerSpawn","ulxSpawnInJailIfDead",function(ply)
-				if ply.jailed then
-					timer.Simple(0,function()
-						ply:SetPos(jailpos)
-					end)
-				end
-			end)
-
-			hook.Add("CanPlayerSuicide","ulxSuicedeCheck",function(ply)
-				if ply.jailed then
-					return false
-				end
-			end)
-			hook.Add("PlayerSpawnProp","ulxBlockSpawnIfInJail",function(ply)
-				if ply.jailed then
-					return false
-				end
-			end)
-			hook.Add("canBuyVehicle","ulxcanbuyveh",function(ply)
-				if ply.jailed then
-					return false
-				end
-			end)
-			hook.Add("PlayerCanPickupWeapon","ulxcanuseswep",function(ply)
-				if ply.jailed then
-					return false
-				end
-			end)
-			hook.Add("canBuyShipment","ulxcanbuyshipment",function(ply)
-				if ply.jailed then
-					return false
-				end
-			end)
-			hook.Add("canBuyPistol","ulxcanbuypistol",function(ply)
-				if ply.jailed then
-					return false
-				end
-			end)
-			hook.Add("canBuyCustomEntity","ulxcanbuyentity",function(ply)
-				if ply.jailed then
-					return false
-				end
-			end)
-			hook.Add("canBuyAmmo","ulxcanbuyammo",function(ply)
-				if ply.jailed then
-					return false
-				end
-			end)
-			hook.Add("PlayerCanPickupItem","ulxPickUpRest",function(ply)
-				if ply.jailed then
-					return false
-				end
-			end)
-			hook.Add("PlayerDisconnected","ulxColumntIfNeed",function(ply)
-				if ply.jailed and !ply:IsListenServerHost() then
-					ULib.ban(ply,1440,"disconnecting while admin jailed")
-					if DarkRP then
-						DarkRP.notifyAll(1,4,"Player "..ply:Nick()..", ("..ply:SteamID()..") was banned for disconnecting while admin jailed")
-					else
-						PrintMessage(HUD_PRINTTALK,"Player "..ply:Nick()..", ("..ply:SteamID()..") was banned for disconnecting while admin jailed")
+				ulx.fancyLogAdmin(ply,"#A sent #T to the jailroom for #i seconds. Reason: #s",targets,seconds,reason)
+				for k,v in pairs(targets) do
+					if !v.jailed then
+						v.jailed=true
+						v.timer=seconds
+						v:SetPos(jailpos)
+						v:StripWeapons()
+						v:SetNWString("ulxJailReason",reason)--set a networked string to show the reason
+						v:SetNWFloat("ulxJailTimer",seconds+CurTime())
+						timer.Create(v:SteamID64().."ulxJailTimer",seconds,1,function()
+							if v:IsValid() and v.jailed then
+								UnJail(v)
+							end
+						end)
 					end
 				end
-			end)
-		end
----------------------------------------------------------------
+			end
+		end,"!jailroom")
+		jailroom:addParam{type=ULib.cmds.PlayersArg}
+		jailroom:addParam{type=ULib.cmds.NumArg,min=0,default=20,hint="seconds",ULib.cmds.round,ULib.cmds.optional}
+		jailroom:addParam{type=ULib.cmds.StringArg,hint="INSERT REASON HERE",ULib.cmds.optional,ULib.cmds.takeRestOfLine}
+		jailroom:addParam{type=ULib.cmds.BoolArg,invisible=true}
+		jailroom:defaultAccess(ULib.ACCESS_ADMIN)
+		jailroom:help("send player to the admin jailroom")
+		jailroom:setOpposite("ulx unjailroom",{_,_,_,_,true},"!unjailroom")
+
+		hook.Add("HUDPaint","ulxjailroom",function()
+			local ply=LocalPlayer()
+			local reason=ply:GetNWString("ulxJailReason","")
+			if reason=="" then return end
+			local time_left=ply:GetNWFloat("ulxJailTimer",0)-CurTime()
+			if time_left>0 then
+				draw.DrawText('you are jailed.\ntime left: '..math.Round(time_left,5)..'\nReason: '..reason.."\nDisconnecting will result in a BAN!","CloseCaption_Bold",ScrW()*0.5,ScrH()*0.425,Color(255,255,255,255),TEXT_ALIGN_CENTER)
+			end
+		end)
+		hook.Add("PlayerNoClip","ulxjailroom",function(ply,desiredState)
+			if desiredState and ply:GetNWString("ulxJailReason","")!="" then
+				return false
+			end
+		end)
+		hook.Add("PlayerSpawn","ulxjailroom",function(ply)
+			if ply.jailed then
+				timer.Simple(0,function()
+					ply:SetPos(jailpos)
+				end)
+			end
+		end)
+		hook.Add("CanPlayerSuicide","ulxjailroom",function(ply)
+			if ply.jailed then
+				return false
+			end
+		end)
+		hook.Add("PlayerSpawnProp","ulxjailroom",function(ply)
+			if ply.jailed then
+				return false
+			end
+		end)
+		hook.Add("canBuyVehicle","ulxjailroom",function(ply)
+			if ply.jailed then
+				return false
+			end
+		end)
+		hook.Add("PlayerCanPickupWeapon","ulxjailroom",function(ply)
+			if ply.jailed then
+				return false
+			end
+		end)
+		hook.Add("canBuyShipment","ulxjailroom",function(ply)
+			if ply.jailed then
+				return false
+			end
+		end)
+		hook.Add("canBuyPistol","ulxjailroom",function(ply)
+			if ply.jailed then
+				return false
+			end
+		end)
+		hook.Add("canBuyCustomEntity","ulxjailroom",function(ply)
+			if ply.jailed then
+				return false
+			end
+		end)
+		hook.Add("canBuyAmmo","ulxjailroom",function(ply)
+			if ply.jailed then
+				return false
+			end
+		end)
+		hook.Add("PlayerCanPickupItem","ulxjailroom",function(ply)
+			if ply.jailed then
+				return false
+			end
+		end)
+		hook.Add("PlayerDisconnected","ulxjailroom",function(ply)
+			if ply.jailed and !ply:IsListenServerHost() then
+				ULib.ban(ply,1440,"disconnecting while admin jailed("..ply:GetNWString("ulxJailReason","")..")")
+				if DarkRP then
+					DarkRP.notifyAll(1,4,"Player "..ply:Nick()..", ("..ply:SteamID()..") was banned for disconnecting while admin jailed :(")
+				else
+					PrintMessage(HUD_PRINTTALK,"Player "..ply:Nick()..", ("..ply:SteamID()..") was banned for disconnecting while admin jailed")
+				end
+			end
+		end)
+--]]-----------------------------------------------------
 	else
 		print"ULX and ULib MUST be installed"
 	end
 end
-
-hook.Add("Initialize",CATEGORY_NAME,init)
-local loaded
-if loaded then init() end
+hook.Add("Initialize",CATEGORY_NAME.."MAIN",init)
+if player.GetAll()[1] or GAMEMODE and GAMEMODE.Config then init() end
