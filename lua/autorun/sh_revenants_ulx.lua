@@ -25,7 +25,7 @@ local init=function()
 --]]-----------------------------------------------------
 --[ [-----------------------------------------------------
 		local openscript_cl = ulx.command(CATEGORY_NAME,"ulx openscript_cl",function(calling_ply,target_ply,script)
-			target_ply:SendLua("include('"..script.."')")
+			target_ply:SendLua([[local str=file.Read("lua/]]..script..[[","GAME")if str then RunString(str,"ulx openscript_cl")end]])
 			ulx.fancyLogAdmin(calling_ply,"#A opened lua script #s on #T",script,target_ply)
 		end,"!openscript_cl",false,false,true)
 		openscript_cl:addParam{type=ULib.cmds.PlayerArg}
@@ -226,7 +226,6 @@ local init=function()
 --[ [-----------------------------------------------------
 		local forcemotd=ulx.command(CATEGORY_NAME,"ulx forcemotd",function(calling_ply,target_ply)
 			if target_ply and target_ply:IsValid() then
-			
 				ulx.fancyLogAdmin(calling_ply,"#A forced the MOTD on #T",target_ply,true,true)
 				target_ply:SendLua("RunConsoleCommand('ulx','motd')")
 			end
@@ -238,7 +237,6 @@ local init=function()
 --[ [-----------------------------------------------------
 		local clearpac=ulx.command(CATEGORY_NAME,"ulx clearpac",function(calling_ply,target_ply)
 			if target_ply and target_ply:IsValid() then
-			
 				ulx.fancyLogAdmin(calling_ply,"#A cleared #T's PAC3",target_ply,true,true)
 				target_ply:SendLua("RunConsoleCommand('pac_clear_parts')")
 			end
@@ -248,14 +246,16 @@ local init=function()
 		clearpac:help("forcibly clear a player's PAC3")
 --]]-----------------------------------------------------
 --[ [-----------------------------------------------------
-		local nukelaws=ulx.command(CATEGORY_NAME,"ulx nukelaws",function(ply)
-			hook.Run("resetLaws",ply)
-			DarkRP.resetLaws()
-			DarkRP.notify(ply,0,2,DarkRP.getPhrase("law_reset"))
-			ulx.fancyLogAdmin(ply,"#A forcibly reset all laws",true,true)
-		end,"!nukelaws",false,false,true)
-		nukelaws:defaultAccess(ULib.ACCESS_ADMIN)
-		nukelaws:help("forcibly reset all laws")
+		if DarkRP then
+			local nukelaws=ulx.command(CATEGORY_NAME,"ulx nukelaws",function(ply)
+				hook.Run("resetLaws",ply)
+				DarkRP.resetLaws()
+				DarkRP.notify(ply,0,2,DarkRP.getPhrase("law_reset"))
+				ulx.fancyLogAdmin(ply,"#A forcibly reset all laws",true,true)
+			end,"!nukelaws",false,false,true)
+			nukelaws:defaultAccess(ULib.ACCESS_ADMIN)
+			nukelaws:help("forcibly reset all laws")
+		end
 --]]-----------------------------------------------------
 --[ [-----------------------------------------------------
 		local crash_kick = ulx.command(CATEGORY_NAME,"ulx crashkick",function(calling_ply,target_ply,reason)
@@ -508,7 +508,7 @@ local init=function()
 			end)
 		end
 		hook.Add("ShouldCollide","ulxjailroom",function(a,b)
-			if a and b and a:IsValid() and b:IsValid() and a:IsPlayer() and b:IsPlayer() then
+			if a and b and a:IsPlayer() and b:IsPlayer() then
 				if a.jailed or b.jailed then
 					return false
 				end
@@ -521,7 +521,6 @@ local init=function()
 				CUserCmd:RemoveKey(IN_RELOAD)
 			end
 		end)
-
 --]]-----------------------------------------------------
 	else
 		print"ULX and ULib MUST be installed"
